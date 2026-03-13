@@ -1,0 +1,36 @@
+# Environments
+venv/
+env/
+.env/
+
+# Security & Secrets (CRITICAL)
+.env
+key
+serviceAccountKey.json
+*.pem
+*.key
+db.config.ts.txt
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/
+
+# OS / System generated files
+.DS_Store
+Thumbs.db
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+output.log
