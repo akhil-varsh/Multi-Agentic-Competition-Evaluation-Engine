@@ -1,15 +1,50 @@
 from typing import TypedDict, List
 import json
 import re
-from langchain_core.messages import HumanMessage
+import base64
 from langgraph.graph import StateGraph, START, END
 
-from src.llm_config import get_llm, get_multimodal_llm
+from src.llm_config import get_client, get_text_model, get_multimodal_model
+from google.genai import types
+
+from langsmith import traceable
+
+@traceable(run_type="llm", name="Gemini-Multimodal-Extration")
+def generate_multimodal_content(client, model, text_prompt, image_b64):
+    return client.models.generate_content(
+        model=model,
+        contents=[
+            types.Content(
+                parts=[
+                    types.Part.from_text(text=text_prompt),
+                    types.Part.from_bytes(
+                        data=base64.b64decode(image_b64),
+                        mime_type="image/jpeg",
+                    )
+                ]
+            )
+        ],
+        config=types.GenerateContentConfig(
+            temperature=1.0,
+            thinking_config=types.ThinkingConfig(thinking_level="low")
+        )
+    )
+
+@traceable(run_type="llm", name="Gemini-Text-Generation")
+def generate_text_content(client, model, prompt):
+    return client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=1.0,
+            response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(thinking_level="low")
+        )
+    )
 
 def safe_json_parse(text: str) -> dict:
     """Helper to safely parse JSON even if wrapped in markdown blocks."""
     text = text.strip()
-    # Strip markdown block formatting if present
     text = re.sub(r'^```(?:json)?\n?', '', text)
     text = re.sub(r'\n?```$', '', text)
     try:
@@ -30,7 +65,8 @@ class EvaluationState(TypedDict):
 def extract_design_info(state: EvaluationState) -> dict:
     """Agent 1: Extracts system design details from the image."""
     print(f"\n[{'*'*10} AGENT 1: EXTRACTING DESIGN INFO FOR TEAM {state['team_id']} {'*'*10}]")
-    llm = get_multimodal_llm()
+    client = get_client()
+    model = get_multimodal_model()
     
     prompt = f"""You are a Principal Cloud Architect and System Design Expert with 15+ years of experience in distributed systems.
     Your task is to exhaustively analyze a submitted System Design block diagram.
@@ -51,28 +87,19 @@ def extract_design_info(state: EvaluationState) -> dict:
     """
     
     print("⏳ Agent 1 is analyzing the diagram using multimodal model...")
-    message = HumanMessage(
-        content=[
-            {"type": "text", "text": prompt},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{state['image_b64']}"}
-            }
-        ]
-    )
+    response = generate_multimodal_content(client, model, prompt, state['image_b64'])
     
-    response = llm.invoke([message])
     print("\n✅ [AGENT 1 OUTPUT] -> Extracted Components:\n")
-    print(response.content)
-    return {"extracted_design": response.content}
+    print(response.text)
+    return {"extracted_design": response.text}
 
 def evaluate_design(state: EvaluationState) -> dict:
     """Agent 2: Evaluates the design against the problem statement and finds edge cases."""
     print(f"\n[{'*'*10} AGENT 2: EVALUATING DESIGN FOR TEAM {state['team_id']} {'*'*10}]")
-    llm = get_llm()
-    # using structured output by telling the model to output json
-    prompt = f"""You are a Lead Staff Engineer and a notoriously strict, expert System Design Evaluator. You are assessing a candidate's 
-    architectural proposal based on a rigorous grading rubric.
+    client = get_client()
+    model = get_text_model()
+
+    prompt = f"""You are a Lead Staff Engineer and a notoriously strict, expert System Design Evaluator. You are assessing a candidate's architectural proposal based on a rigorous grading rubric.
     
     Problem Statement Requirements: {state['sd_problem']}
     
@@ -86,7 +113,7 @@ def evaluate_design(state: EvaluationState) -> dict:
        - Data Management (20 pts): Is the choice of SQL/NoSQL appropriate? Is caching utilized properly? Is data consistency addressed?
        - Overall Suitability (20 pts): Does the architecture directly solve the user's specific "Problem Statement"?
        
-    2. Identify Critical Weaknesses & Edge Cases: Formulate 20 hyper-specific, realistic production edge cases that this specific architecture fails to handle correctly. (e.g., "Cache stampede on the user-metadata Redis cluster upon regional failover").
+    2. Identify Critical Weaknesses & Edge Cases: Formulate 20 hyper-specific, realistic production edge cases that this specific architecture fails to handle correctly.
 
     CRITICAL RULES:
     - Keep the `feedback` string concise (under 4 sentences) to prevent JSON cutoffs.
@@ -101,13 +128,13 @@ def evaluate_design(state: EvaluationState) -> dict:
     """
     
     print("⏳ Agent 2 is grading the architecture and generating Edge Cases...")
-    response = llm.invoke(prompt)
+    response = generate_text_content(client, model, prompt)
     
     print("\n✅ [AGENT 2 RAW JSON OUTPUT]:\n")
-    print(response.content)
+    print(response.text)
     
     try:
-        data = safe_json_parse(response.content)
+        data = safe_json_parse(response.text)
         return {
             "score_80": data.get("score_out_of_80", 0),
             "evaluator_feedback": data.get("feedback", ""),
@@ -120,7 +147,8 @@ def evaluate_design(state: EvaluationState) -> dict:
 def generate_mcqs(state: EvaluationState) -> dict:
     """Agent 3: Generates MCQs based on the edge cases."""
     print(f"\n[{'*'*10} AGENT 3: GENERATING MCQS FOR TEAM {state['team_id']} {'*'*10}]")
-    llm = get_llm()
+    client = get_client()
+    model = get_text_model()
     
     prompt = f"""You are a Systems Engineering Mentor crafting an evaluation assessment.
     Your goal is to test the candidates on the flaws and unhandled edge cases found in their System Design. 
@@ -133,8 +161,7 @@ def generate_mcqs(state: EvaluationState) -> dict:
     Generate EXACTLY 20 intermediate-level, scenario-based Multiple-Choice Questions (MCQs).
     The questions MUST directly relate to mitigating or solving the `Edge Cases` listed above. 
     - CRITICAL: Ensure every single question tests a DIFFERENT, UNIQUE concept to avoid redundancy.
-    - CRITICAL: DO NOT start your questions by saying "Agent 3's design" or referencing "Agent 3". Talk purely about "The candidate's design",
-      "The proposed architecture", or "The system".
+    - CRITICAL: DO NOT start your questions by saying "Agent 3's design" or referencing "Agent 3". Talk purely about "The candidate's design", "The proposed architecture", or "The system".
     - Options should include realistic but incorrect solutions to test conceptual understanding.
     - Provide a clear technical explanation for why the `correct_answer` is right.
     
@@ -152,14 +179,14 @@ def generate_mcqs(state: EvaluationState) -> dict:
     Ensure all 20 questions are generated. No more, no less.
     """
     
-    print(f"⏳ Agent 3 is generating 20 MCQs based on edge cases: {state['edge_cases']}...")
-    response = llm.invoke(prompt)
+    print(f"⏳ Agent 3 is generating 20 MCQs based on edge cases...")
+    response = generate_text_content(client, model, prompt)
     
     print("\n✅ [AGENT 3 RAW JSON OUTPUT]:\n")
-    print(response.content)
+    print(response.text)
     
     try:
-        data = safe_json_parse(response.content)
+        data = safe_json_parse(response.text)
         print(f"\n🎉 Successfully parsed {len(data.get('questions', []))} questions from Agent 3!")
         return {"mcqs": data.get("questions", [])}
     except Exception as e:

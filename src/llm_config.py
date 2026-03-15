@@ -28,3 +28,44 @@ def get_multimodal_llm():
         temperature=0.6,
         num_ctx=262144, # Instruct Ollama to utilize Kimi's full 262K context window natively for heavy images
     )
+
+
+# from langchain_openai import ChatOpenAI
+# import os
+# from dotenv import load_dotenv
+
+# load_dotenv()
+
+# # The gateway IP handling the 6 NIM Docker nodes
+# NIM_CLUSTER_URL = "http://localhost:8080/v1" 
+
+# def get_llm():
+#     """
+#     Returns the configured LLM for general text and evaluation via the NIM Cluster.
+#     """
+#     return ChatOpenAI(
+#         model="moonshotai/kimi-k2.5",     # Use the Docker image model name
+#         base_url=NIM_CLUSTER_URL,
+#         api_key="dummy-key",              # NIM accepts any non-empty string locally
+#         temperature=0.6,
+#         model_kwargs={"response_format": {"type": "json_object"}},
+        
+#         # Token Limits Update:
+#         max_tokens=32768,                 # Replaces Ollama's 'num_predict'
+#     )
+
+# def get_multimodal_llm():
+#     """
+#     Returns the configured LLM capable of processing images via the NIM Cluster.
+#     """
+#     return ChatOpenAI(
+#         model="moonshotai/kimi-k2.5",
+#         base_url=NIM_CLUSTER_URL,
+#         api_key="dummy-key",
+#         temperature=0.6,
+        
+#         # Token Limits Update:
+#         max_tokens=32768,                 # Adjust max output tokens
+#         # Note: NIM automatically handles max context window limits natively 
+#         # based on VRAM constraints (no need for Ollama's 'num_ctx')
+#     )
