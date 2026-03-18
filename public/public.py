@@ -1,12 +1,15 @@
 import streamlit as st
-import base64
-from src.graph import eval_app
+import requests
+import time
 
-def get_image_base64(uploaded_file):
-    """Encodes the uploaded Streamlit file into base64."""
-    uploaded_file.seek(0) # Reset file pointer in case it was read by st.image()
-    bytes_data = uploaded_file.read()
-    return base64.b64encode(bytes_data).decode('utf-8')
+# =========================================================================
+# CONFIGURATION
+# Tell your friends to paste your Ngrok URL here!
+# (Keep the '/evaluate' at the end)
+BACKEND_API_URL = "<NGROK_URL>/evaluate"
+# =========================================================================
+
+st.set_page_config(page_title="Remote Sys Design Evaluator", layout="centered")
 
 # Ensure Streamlit state variables are initialized
 if 'eval_result' not in st.session_state:
@@ -16,10 +19,8 @@ if 'mcq_submitted' not in st.session_state:
 if 'user_answers' not in st.session_state:
     st.session_state.user_answers = {}
 
-st.set_page_config(page_title="Sys Design Workshop Engine", layout="centered")
-
-st.title("🧩 System Design Workshop Evaluator")
-st.markdown("Automated evaluation engine using Multi-Agent LLMs.")
+st.title("🌐 Remote System Design Evaluator")
+st.markdown("Automated evaluation engine connected to the Cloud via API.")
 
 # STEP 1: UPLOAD DESIGN
 if st.session_state.eval_result is None:
@@ -27,49 +28,55 @@ if st.session_state.eval_result is None:
     
     team_id = st.text_input("Team ID")
     problem = st.text_area("System Design Problem Statement", height=150)
-    image = st.file_uploader("Upload System Design Diagram", type=["png", "jpg", "jpeg"])
+    uploaded_image = st.file_uploader("Upload System Design Diagram", type=["png", "jpg", "jpeg"])
     
-    if image is not None:
-        st.success("✅ Image successfully uploaded!")
+    if uploaded_image is not None:
+        st.success("✅ Image selected!")
         with st.expander("👁️ View Uploaded Diagram"):
-            st.image(image, caption="System Design to be Evaluated", use_container_width=True)
+            st.image(uploaded_image, caption="System Design to be Evaluated", use_container_width=True)
     
-    if st.button("Submit Design for Evaluation", type="primary"):
-        if team_id and problem and image:
-            with st.spinner("AI Agents are actively analyzing Architecture, Grading, and Generating Edge Cases. Please wait..."):
-                b64_img = get_image_base64(image)
+    if st.button("Submit Design to AI Backend", type="primary"):
+        if team_id and problem and uploaded_image:
+            with st.spinner("Uploading to Backend... AI Agents are actively analyzing Architecture, Grading, and Generating Edge Cases."):
                 
-                # Mock Initial State
-                state = {
-                    "team_id": team_id,
-                    "sd_problem": problem,
-                    "image_b64": b64_img,
-                    "extracted_design": "",
-                    "score_80": 0,
-                    "evaluator_feedback": "",
-                    "edge_cases": [],
-                    "mcqs": []
+                # Prepare the Payload for the API
+                # Reset file pointer just in case
+                uploaded_image.seek(0)
+                
+                files = {'image': (uploaded_image.name, uploaded_image, uploaded_image.type)}
+                data = {
+                    'team_id': team_id,
+                    'sd_problem': problem
                 }
                 
-                # Run the Pipeline
                 try:
-                    result = eval_app.invoke(state)
-                    st.session_state.eval_result = result
-                    st.rerun() # Refresh to jump to Step 2
+                    # Send API Request to your Ngrok backend
+                    response = requests.post(BACKEND_API_URL, data=data, files=files)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        st.session_state.eval_result = result
+                        st.success("Analysis Complete!")
+                        time.sleep(1)
+                        st.rerun() # Refresh to jump to Step 2
+                    else:
+                        st.error(f"Backend Server Error: {response.status_code} - {response.text}")
                 except Exception as e:
-                    st.error(f"Pipeline Execution Failed: {e}")
+                    st.error(f"Failed to connect to the backend server. Make sure the API_URL is correct. Error: {e}")
         else:
             st.warning("Please fill out all inputs before submitting.")
 
 # STEP 2: ANSWER MCQS GENERATED DYNAMICALLY
 elif not st.session_state.mcq_submitted:
-    st.header(f"Step 2: Edge Case Scenario Questions (Team: {st.session_state.eval_result['team_id']})")
+    st.header(f"Step 2: Edge Case Scenario Questions (Team: {st.session_state.eval_result.get('team_id', 'Unknown')})")
     st.info("The architectural evaluation is complete. based on edge cases found in your design, please answer the following scenarios to accumulate your remaining 20 points.")
     
+    # We must properly grab the mcqs array from the response dict
     questions = st.session_state.eval_result.get("mcqs", [])
     
-    if not questions:
-        st.error("No questions were generated by the AI. Review model outputs.")
+    if type(questions) is not list or len(questions) == 0:
+        st.error("No questions were received from the server. Please check the backend outputs.")
+        st.write(st.session_state.eval_result) # Debugging step to see what actually arrived
         if st.button("Reset"):
             st.session_state.clear()
             st.rerun()
@@ -109,7 +116,7 @@ else:
         if st.session_state.user_answers.get(i) == q.get("correct_answer"):
             mcq_score += 1
             
-    base_score = result.get("score_80", 0)
+    base_score = result.get("score_out_of_80", 0)
     final_score = base_score + mcq_score
     
     st.success(f"## Final Team Score: {final_score} / 100")
@@ -148,8 +155,8 @@ else:
             if not is_correct:
                 st.info(f"**Explanation:** {q.get('explanation')}")
             else:
-                st.success(f"**Explanation:** {q.get('explanation')}")
-
-    if st.button("Evaluate Another Team"):
+                st.success("Correct!")
+    
+    if st.button("Start Over"):
         st.session_state.clear()
         st.rerun()

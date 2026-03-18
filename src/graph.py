@@ -130,7 +130,7 @@ def generate_mcqs(state: EvaluationState) -> dict:
     - Specific Edge Cases/Flaws Found in Their Design: {state['edge_cases']}
     
     Instructions:
-    Generate EXACTLY 20 intermediate-level, scenario-based Multiple-Choice Questions (MCQs).
+    Generate EXACTLY 10 intermediate-level, scenario-based Multiple-Choice Questions (MCQs).
     The questions MUST directly relate to mitigating or solving the `Edge Cases` listed above. 
     - CRITICAL: Ensure every single question tests a DIFFERENT, UNIQUE concept to avoid redundancy.
     - CRITICAL: DO NOT start your questions by saying "Agent 3's design" or referencing "Agent 3". Talk purely about "The candidate's design",
@@ -149,10 +149,10 @@ def generate_mcqs(state: EvaluationState) -> dict:
             }}
         ]
     }}
-    Ensure all 20 questions are generated. No more, no less.
+    Ensure all 10 questions are generated. No more, no less.
     """
     
-    print(f"⏳ Agent 3 is generating 20 MCQs based on edge cases: {state['edge_cases']}...")
+    print(f"⏳ Agent 3 is generating 10 MCQs based on edge cases: {state['edge_cases']}...")
     response = llm.invoke(prompt)
     
     print("\n✅ [AGENT 3 RAW JSON OUTPUT]:\n")
