@@ -2,6 +2,9 @@
 
 Thank you for attending the SSD Workshop! This repository contains the sample code and resources for our session. Here you'll find everything you need to set up, run, and understand the project architecture.
 
+> [!NOTE]
+> We initially designed our system to deploy this in our college HPC lab, but due to time constraints we moved to a cloud approach.
+
 ## 🏗 Architecture Diagram
 
 ![Architecture Diagram](./arch.png)
@@ -36,7 +39,21 @@ Thank you for attending the SSD Workshop! This repository contains the sample co
     *   `firebase_utils.py`: Manages database operations.
     *   `graph.py`: Contains the core application graphs and logic flows.
     *   **👉 Prompt Templates**: Check out **`src/llm_config.py`** to find and modify the prompt templates used by the AI models behind the scenes!
-*   **`nim_app/`**: Contains scripts (`deploy_gateway.sh`, `deploy_nim.sh`) and documentation (`CLUSTER_GUIDE.md`) required for deploying the application infrastructure, including NGINX routing configs.
+*   **`nim_app/`**: Our dedicated cluster deployment package. (See below for details)
+
+### 🖥️ Deep Dive: The `nim_app/` Folder (Standalone Deployment)
+
+![NIM Architecture](./nim.png)
+
+The `nim_app/` directory is designed to work completely independently from the core local application. It encapsulates the production infrastructure code intended for scaling (e.g., in an HPC cluster or cloud environment using NVIDIA Inference Microservices - NIM). 
+
+Here is how it works under the hood:
+*   **Gateway & Routing**: Uses `nginx/nginx.conf` to configure an NGINX load balancer / reverse proxy to route traffic smoothly.
+*   **Deployment Scripts**: Bash scripts (`deploy_gateway.sh` and `deploy_nim.sh`) to automate the spinning up of the gateway and inference microservices node by node.
+*   **Independent Entry Point (`main.py`)**: Includes a specialized `main.py` tailored specifically for the cluster gateway rather than the local client/server loop.
+
+> [!IMPORTANT]
+> You only need to work within the `nim_app/` folder if you are deploying the architecture to an HPC cluster or cloud instances. For local testing, prompt tweaking, and workshop participation, you can safely ignore it and just use the `public/` and `src/` folders!
 
 ## 🚀 Setup Instructions
 
@@ -63,12 +80,13 @@ Thank you for attending the SSD Workshop! This repository contains the sample co
    ```
    Open the `.env` file and fill in your respective API keys. 
 
-   **🔍 About LangChain Tracing & LangSmith (Recommended)**
-   This project uses **LangChain Tracing** via **LangSmith** to help you understand your AI's thought process under the hood:
-   * **LangChain Tracing** logs every step of a complex agent's execution. It captures exactly what prompts go into the models and the raw output that comes back.
-   * **LangSmith** is the visual web dashboard where you can easily inspect, debug, evaluate, and monitor those traces in real-time.
-   
-   To link your project to your dashboard, just ensure `LANGCHAIN_TRACING_V2=true` in your `.env` and fill in your `LANGCHAIN_API_KEY`.
+   > [!TIP]
+   > **About LangChain Tracing & LangSmith (Recommended)**
+   > This project uses **LangChain Tracing** via **LangSmith** to help you understand your AI's thought process under the hood:
+   > * **LangChain Tracing** logs every step of a complex agent's execution. It captures exactly what prompts go into the models and the raw output that comes back.
+   > * **LangSmith** is the visual web dashboard where you can easily inspect, debug, evaluate, and monitor those traces in real-time.
+   > 
+   > To link your project to your dashboard, just ensure `LANGCHAIN_TRACING_V2=true` in your `.env` and fill in your `LANGCHAIN_API_KEY`.
 
 4. **Install dependencies:**
    ```bash
